@@ -102,6 +102,9 @@ model Job {
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
   applications   JobApplication[]
+  attachmentUrl String?
+  attachmentName String?
+  attachmentMimeType String?
 }
 
 model JobApplication {

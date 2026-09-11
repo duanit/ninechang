@@ -1,8 +1,8 @@
 "use client";
 import { FormEvent, ReactNode, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Bell, BriefcaseBusiness, Hammer, LogOut, MessageCircle, WalletCards, Plus, Play, CheckCircle2, XCircle, Trash2, Pencil, Star } from "lucide-react";
-import { api, AuthUser, clearSession, getChatReadAt, getStoredUser, getToken } from "@/lib/api";
+import { Bell, BriefcaseBusiness, Hammer, LogOut, MessageCircle, WalletCards, Plus, Play, CheckCircle2, XCircle, Trash2, Pencil, Star, Paperclip } from "lucide-react";
+import { api, apiFormData, AuthUser, clearSession, getChatReadAt, getStoredUser, getToken } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -11,7 +11,7 @@ import { Label } from "@/components/ui/label";
 import { io } from "socket.io-client";
 
 type JobApplication = { id: string; professionalId: string; status: string; professional: { id: string; displayName: string; professional?: { bio?: string | null; verified: boolean } | null; _count?: { professionalReviews: number } } };
-type Job = { id: string; title: string; category?: string; description?: string; amount: number; status: string; professionalId?: string | null; applicationStatus?: string | null; applications?: JobApplication[]; review?: { rating: number; comment?: string | null } | null; room?: { id: string }; payment?: { status: string }; customer?: { displayName: string } };
+type Job = { id: string; title: string; category?: string; description?: string; amount: number; status: string; professionalId?: string | null; attachmentUrl?: string | null; attachmentName?: string | null; applicationStatus?: string | null; applications?: JobApplication[]; review?: { rating: number; comment?: string | null } | null; room?: { id: string }; payment?: { status: string }; customer?: { displayName: string } };
 type Service = { id: string; title: string; category: string; description: string; amount: number };
 const serviceCategories = ["ซ่อมแซมทั่วไป", "ต่อเติม–รีโนเวท", "ระบบไฟฟ้า", "ประปา", "ทาสี–วอลเปเปอร์", "ตรวจบ้าน–คอนโด", "แอร์และเครื่องใช้ไฟฟ้า", "ทำความสะอาด", "สวนและภูมิทัศน์", "ออกแบบบ้าน", "ออกแบบตกแต่งภายใน", "ตัดต้นไม้", "อื่นๆ"];
 type ChatMessage = { id: string; body: string; createdAt: string; sender: { id: string; displayName: string } };
@@ -28,6 +28,7 @@ export default function DashboardPage() {
   const [createError, setCreateError] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingService, setEditingService] = useState<Service | null>(null);
+  const [editingJob, setEditingJob] = useState<Job | null>(null);
   const [unreadChats, setUnreadChats] = useState<Record<string, number>>({});
   const [notificationReady, setNotificationReady] = useState(() => typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted");
 
@@ -109,6 +110,7 @@ export default function DashboardPage() {
       const category = String(form.get("category") ?? "").trim();
       const description = String(form.get("description") ?? "").trim();
       const amount = Math.round(Number(form.get("amount") ?? 0) * 100);
+      const attachment = form.get("attachment");
       if (!title || amount <= 0) { setCreateError("กรุณากรอกชื่องานและงบประมาณ"); return; }
       if (isProfessional) {
         const savedService = await api<Service>(editingService ? `/api/services/${editingService.id}` : "/api/services", {
@@ -117,14 +119,20 @@ export default function DashboardPage() {
         });
         setServices((items) => editingService ? items.map((item) => item.id === savedService.id ? savedService : item) : [savedService, ...items]);
       } else {
-        const newJob = await api<Job>("/api/jobs", {
-        method: "POST",
+        const newJob = await api<Job>(editingJob ? `/api/jobs/${editingJob.id}` : "/api/jobs", {
+        method: editingJob ? "PATCH" : "POST",
         body: JSON.stringify({ title, category, description, amount }),
         });
-        setJobs([newJob, ...jobs]);
+        if (attachment instanceof File && attachment.size > 0) {
+          const fileForm = new FormData();
+          fileForm.append("file", attachment);
+          await apiFormData<Job>(`/api/jobs/${newJob.id}/attachment`, fileForm);
+        }
+        setJobs(editingJob ? jobs.map((item) => item.id === newJob.id ? newJob : item) : [newJob, ...jobs]);
       }
       setDialogOpen(false);
       setEditingService(null);
+      setEditingJob(null);
       (event.target as HTMLFormElement).reset();
     } catch (caught) {
       setCreateError(caught instanceof Error ? caught.message : "สร้างงานไม่สำเร็จ");
@@ -146,6 +154,12 @@ export default function DashboardPage() {
   function openServiceEditor(service: Service) {
     setEditingService(service);
     setCreateError("");
+    setDialogOpen(true);
+  }
+
+  function openJobEditor(job: Job) {
+    setEditingJob(job);
+    setEditingService(null);
     setDialogOpen(true);
   }
 
@@ -211,14 +225,15 @@ export default function DashboardPage() {
       <div className="flex items-center justify-between"><div><h1 className="text-3xl font-black">{isProfessional ? (isContractor ? "บริการของผู้รับเหมา" : "บริการของฉัน") : "งานของฉัน"}</h1><p className="mt-1 text-slate-500">{isContractor ? "นำเสนอบริการ คุมงาน ตรวจงาน และส่งมอบตามแบบและสัญญา" : "ติดตามงาน ข้อความ และการชำระเงิน"}</p></div>
         <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) { setEditingService(null); setCreateError(""); } }}>
           <DialogTrigger asChild><Button className="bg-[#ff6b2c]"><Plus size={17}/> {isCustomer ? "สร้างงาน" : "เพิ่มบริการ"}</Button></DialogTrigger>
-          <DialogContent><DialogHeader><DialogTitle>{isCustomer ? "สร้างงานใหม่" : editingService ? "แก้ไขบริการ" : "เพิ่มบริการใหม่"}</DialogTitle></DialogHeader>
-            <form key={editingService?.id ?? "new"} onSubmit={handleCreateJob} className="grid gap-4">
-              <div className="grid gap-2"><Label htmlFor="title">{isCustomer ? "ชื่องาน" : "ชื่อบริการ"}</Label><Input id="title" name="title" required defaultValue={editingService?.title} placeholder={isCustomer ? "เช่น ซ่อมแซมห้องน้ำ" : "เช่น งานติดตั้งไฟฟ้า"} maxLength={150}/></div>
-              <div className="grid gap-2"><Label htmlFor="category">หมวดการให้บริการ</Label><select id="category" name="category" defaultValue={editingService?.category ?? serviceCategories[0]} className="h-10 rounded-md border border-input bg-white px-3 text-sm">{serviceCategories.map((category) => <option key={category} value={category}>{category}</option>)}</select></div>
-              <div className="grid gap-2"><Label htmlFor="description">{isCustomer ? "รายละเอียดงาน" : "คำอธิบายบริการ"}</Label><Textarea id="description" name="description" required={isProfessional} defaultValue={editingService?.description} placeholder={isCustomer ? "อธิบายงานให้ช่างเข้าใจ..." : "อธิบายบริการและจุดแข็ง..."} maxLength={1000}/></div>
-              <div className="grid gap-2"><Label htmlFor="amount">{isCustomer ? "งบประมาณ (บาท)" : "ราคาเริ่มต้น (บาท)"}</Label><Input id="amount" name="amount" type="number" defaultValue={editingService ? editingService.amount / 100 : undefined} min="100" max="9999999" step="100" required placeholder="เช่น 5000"/></div>
+          <DialogContent><DialogHeader><DialogTitle>{isCustomer ? editingJob ? "แก้ไขงาน" : "สร้างงานใหม่" : editingService ? "แก้ไขบริการ" : "เพิ่มบริการใหม่"}</DialogTitle></DialogHeader>
+           <form key={editingJob?.id ?? editingService?.id ?? "new"} onSubmit={handleCreateJob} className="grid gap-4">
+             <div className="grid gap-2"><Label htmlFor="title">{isCustomer ? "ชื่องาน" : "ชื่อบริการ"}</Label><Input id="title" name="title" required defaultValue={editingJob?.title ?? editingService?.title} placeholder={isCustomer ? "เช่น ซ่อมแซมห้องน้ำ" : "เช่น งานติดตั้งไฟฟ้า"} maxLength={150}/></div>
+             <div className="grid gap-2"><Label htmlFor="category">หมวดการให้บริการ</Label><select id="category" name="category" defaultValue={editingJob?.category ?? editingService?.category ?? serviceCategories[0]} className="h-10 rounded-md border border-input bg-white px-3 text-sm">{serviceCategories.map((category) => <option key={category} value={category}>{category}</option>)}</select></div>
+             <div className="grid gap-2"><Label htmlFor="description">{isCustomer ? "รายละเอียดงาน" : "คำอธิบายบริการ"}</Label><Textarea id="description" name="description" required={isProfessional} defaultValue={editingJob?.description ?? editingService?.description} placeholder={isCustomer ? "อธิบายงานให้ช่างเข้าใจ..." : "อธิบายบริการและจุดแข็ง..."} maxLength={1000}/></div>
+             <div className="grid gap-2"><Label htmlFor="amount">{isCustomer ? "งบประมาณ (บาท)" : "ราคาเริ่มต้น (บาท)"}</Label><Input id="amount" name="amount" type="number" defaultValue={(editingJob?.amount ?? editingService?.amount) ? (editingJob?.amount ?? editingService?.amount)! / 100 : undefined} min="100" max="9999999" step="100" required placeholder="เช่น 5000"/></div>
+              {isCustomer && <div className="grid gap-2"><Label htmlFor="attachment"><Paperclip className="inline size-4"/> รูปภาพหรือไฟล์แนบ</Label><Input id="attachment" name="attachment" type="file" accept="image/*,.pdf,.txt,.doc,.docx,.xls,.xlsx"/></div>}
               {createError && <div className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{createError}</div>}
-              <div className="flex gap-3"><Button disabled={creating} className="flex-1 bg-[#ff6b2c]">{creating ? "กำลังบันทึก..." : editingService ? "บันทึกการแก้ไข" : "สร้าง"}</Button><DialogClose asChild><Button variant="outline" className="flex-1" onClick={() => setEditingService(null)}>ยกเลิก</Button></DialogClose></div>
+              <div className="flex gap-3"><Button disabled={creating} className="flex-1 bg-[#ff6b2c]">{creating ? "กำลังบันทึก..." : editingJob || editingService ? "บันทึกการแก้ไข" : "สร้าง"}</Button><DialogClose asChild><Button variant="outline" className="flex-1" onClick={() => { setEditingService(null); setEditingJob(null); }}>ยกเลิก</Button></DialogClose></div>
             </form>
           </DialogContent>
         </Dialog>
@@ -237,6 +252,7 @@ export default function DashboardPage() {
       </section>}
       <div id="messages" className="mt-7 grid gap-4">{jobs.map((job) => <JobCard key={job.id} job={job} showApplications={isCustomer} onSelectProvider={isCustomer && job.status === "OPEN" ? (professionalId) => void selectProvider(job.id, professionalId) : undefined} action={<div className="flex flex-wrap gap-2">
         {job.room && <Button variant="outline" asChild><a href={`/chat/${job.room.id}`}><MessageCircle size={17}/> แชต{unreadChats[job.room.id] ? <span className="rounded-full bg-red-500 px-1.5 text-[10px] text-white">{unreadChats[job.room.id]}</span> : null}</a></Button>}
+        {isCustomer && job.status === "OPEN" && <Button variant="outline" onClick={() => openJobEditor(job)}><Pencil size={17}/> แก้ไขงาน</Button>}
         {isCustomer && job.status !== "COMPLETED" && job.status !== "CANCELLED" && <Button variant="outline" onClick={() => void changeStatus(job.id, "CANCELLED")}><XCircle size={17}/> ยกเลิก</Button>}
         {isProfessional && job.status === "ACCEPTED" && <Button onClick={() => void changeStatus(job.id, "IN_PROGRESS")}><Play size={17}/> เริ่มงาน</Button>}
         {isProfessional && job.status === "IN_PROGRESS" && <Button onClick={() => void changeStatus(job.id, "COMPLETED")}><CheckCircle2 size={17}/> ส่งมอบงาน</Button>}

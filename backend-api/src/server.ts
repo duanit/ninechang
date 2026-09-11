@@ -36,6 +36,13 @@ const upload = multer({
     callback(null, file.mimetype.startsWith('image/'));
   },
 });
+const jobAttachmentUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (_req, file, callback) => {
+    callback(null, file.mimetype.startsWith('image/') || file.mimetype === 'application/pdf' || file.mimetype === 'text/plain' || file.mimetype.includes('word') || file.mimetype.includes('sheet'));
+  },
+});
 const r2Configured = Boolean(
   process.env.R2_ENDPOINT &&
   process.env.R2_BUCKET &&
@@ -797,6 +804,61 @@ app.post(
     });
 
     res.status(201).json(job);
+  }),
+);
+
+app.patch(
+  '/api/jobs/:jobId',
+  auth,
+  asyncRoute(async (req, res) => {
+    if (req.auth!.role !== 'CUSTOMER') {
+      res.status(403).json({ message: 'เฉพาะลูกค้าเท่านั้น' });
+      return;
+    }
+    const input = z.object({
+      title: z.string().trim().min(3).max(200),
+      category: z.string().trim().min(2).max(100),
+      description: z.string().trim().min(10).max(5000),
+      amount: z.number().int().min(2000),
+    }).parse(req.body);
+    const job = await prisma.job.updateMany({
+      where: { id: String(req.params.jobId), customerId: req.auth!.userId, status: 'OPEN' },
+      data: input,
+    });
+    if (job.count === 0) {
+      res.status(404).json({ message: 'ไม่พบงานที่แก้ไขได้' });
+      return;
+    }
+    res.json(await prisma.job.findUnique({ where: { id: String(req.params.jobId) }, include: { room: true } }));
+  }),
+);
+
+app.post(
+  '/api/jobs/:jobId/attachment',
+  auth,
+  jobAttachmentUpload.single('file'),
+  asyncRoute(async (req, res) => {
+    if (req.auth!.role !== 'CUSTOMER' || !req.file) {
+      res.status(400).json({ message: 'กรุณาแนบไฟล์' });
+      return;
+    }
+    const job = await prisma.job.findFirst({ where: { id: String(req.params.jobId), customerId: req.auth!.userId } });
+    if (!job) {
+      res.status(404).json({ message: 'ไม่พบงานของคุณ' });
+      return;
+    }
+    if (!r2) {
+      res.status(503).json({ message: 'ยังไม่ได้ตั้งค่าที่เก็บไฟล์' });
+      return;
+    }
+    const key = `jobs/${job.id}/${Date.now()}-${req.file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+    await r2.send(new PutObjectCommand({ Bucket: process.env.R2_BUCKET!, Key: key, Body: req.file.buffer, ContentType: req.file.mimetype }));
+    const updated = await prisma.job.update({
+      where: { id: job.id },
+      data: { attachmentUrl: `${process.env.R2_PUBLIC_BASE_URL!.replace(/\/$/, '')}/${key}`, attachmentName: req.file.originalname, attachmentMimeType: req.file.mimetype },
+      include: { room: true },
+    });
+    res.json(updated);
   }),
 );
 
