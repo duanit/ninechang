@@ -81,18 +81,17 @@ const omise = Omise({
 
 const io = new Server(server, {
   cors: {
-    origin: '*',
+    origin: appUrl,
     methods: ['GET', 'POST'],
   },
 });
 
 /*
- * ใช้ origin: '*' เฉพาะตอนพัฒนาในเครื่อง
- * ก่อน Production ต้องจำกัดเป็นโดเมนจริง
+ * จำกัด origin ตาม APP_URL เพื่อไม่เปิด API ให้ทุกเว็บไซต์ใน production
  */
 app.use(
   cors({
-    origin: '*',
+    origin: appUrl,
     methods: [
       'GET',
       'POST',
