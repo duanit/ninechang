@@ -954,6 +954,30 @@ app.get(
 );
 
 app.get(
+  '/api/jobs/public/:jobId',
+  asyncRoute(async (req, res) => {
+    const job = await prisma.job.findFirst({
+      where: {
+        id: String(req.params.jobId),
+        status: 'OPEN',
+        professionalId: null,
+      },
+      include: {
+        customer: { select: { displayName: true } },
+        room: { select: { id: true } },
+      },
+    });
+
+    if (!job) {
+      res.status(404).json({ message: 'ไม่พบงานหรือปิดรับงานแล้ว' });
+      return;
+    }
+
+    res.json(job);
+  }),
+);
+
+app.get(
   '/api/jobs/available',
   auth,
   asyncRoute(async (req, res) => {
