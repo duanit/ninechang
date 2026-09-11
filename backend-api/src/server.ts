@@ -847,15 +847,20 @@ app.post(
       res.status(404).json({ message: 'ไม่พบงานของคุณ' });
       return;
     }
-    if (!r2) {
-      res.status(503).json({ message: 'ยังไม่ได้ตั้งค่าที่เก็บไฟล์' });
-      return;
-    }
     const key = `jobs/${job.id}/${Date.now()}-${req.file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
-    await r2.send(new PutObjectCommand({ Bucket: process.env.R2_BUCKET!, Key: key, Body: req.file.buffer, ContentType: req.file.mimetype }));
+    let attachmentUrl: string;
+    if (r2) {
+      await r2.send(new PutObjectCommand({ Bucket: process.env.R2_BUCKET!, Key: key, Body: req.file.buffer, ContentType: req.file.mimetype }));
+      attachmentUrl = `${process.env.R2_PUBLIC_BASE_URL!.replace(/\/$/, '')}/${key}`;
+    } else {
+      const localPath = path.join(uploadsDir, key);
+      fs.mkdirSync(path.dirname(localPath), { recursive: true });
+      fs.writeFileSync(localPath, req.file.buffer);
+      attachmentUrl = `https://${req.get('host')}/uploads/${key}`;
+    }
     const updated = await prisma.job.update({
       where: { id: job.id },
-      data: { attachmentUrl: `${process.env.R2_PUBLIC_BASE_URL!.replace(/\/$/, '')}/${key}`, attachmentName: req.file.originalname, attachmentMimeType: req.file.mimetype },
+      data: { attachmentUrl, attachmentName: req.file.originalname, attachmentMimeType: req.file.mimetype },
       include: { room: true },
     });
     res.json(updated);
