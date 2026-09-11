@@ -976,13 +976,21 @@ app.get(
             displayName: true,
           },
         },
+        applications: {
+          where: { professionalId: req.auth!.userId },
+          select: { status: true },
+          take: 1,
+        },
       },
       orderBy: {
         createdAt: 'desc',
       },
     });
 
-    res.json(jobs);
+    res.json(jobs.map(({ applications, ...job }) => ({
+      ...job,
+      applicationStatus: applications[0]?.status ?? null,
+    })));
   }),
 );
 

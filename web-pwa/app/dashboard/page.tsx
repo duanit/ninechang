@@ -11,7 +11,7 @@ import { Label } from "@/components/ui/label";
 import { io } from "socket.io-client";
 
 type JobApplication = { id: string; professionalId: string; status: string; professional: { id: string; displayName: string; professional?: { bio?: string | null; verified: boolean } | null; _count?: { professionalReviews: number } } };
-type Job = { id: string; title: string; category?: string; description?: string; amount: number; status: string; professionalId?: string | null; applications?: JobApplication[]; review?: { rating: number; comment?: string | null } | null; room?: { id: string }; payment?: { status: string }; customer?: { displayName: string } };
+type Job = { id: string; title: string; category?: string; description?: string; amount: number; status: string; professionalId?: string | null; applicationStatus?: string | null; applications?: JobApplication[]; review?: { rating: number; comment?: string | null } | null; room?: { id: string }; payment?: { status: string }; customer?: { displayName: string } };
 type Service = { id: string; title: string; category: string; description: string; amount: number };
 const serviceCategories = ["ซ่อมแซมทั่วไป", "ต่อเติม–รีโนเวท", "ระบบไฟฟ้า", "ประปา", "ทาสี–วอลเปเปอร์", "ตรวจบ้าน–คอนโด", "แอร์และเครื่องใช้ไฟฟ้า", "ทำความสะอาด", "สวนและภูมิทัศน์", "ออกแบบบ้าน", "ออกแบบตกแต่งภายใน", "ตัดต้นไม้", "อื่นๆ"];
 type ChatMessage = { id: string; body: string; createdAt: string; sender: { id: string; displayName: string } };
@@ -152,7 +152,7 @@ export default function DashboardPage() {
   async function claimJob(jobId: string) {
     try {
       const claimedJob = await api<Job>(`/api/jobs/${jobId}/claim`, { method: "POST" });
-      setAvailableJobs((items) => items.filter((job) => job.id !== jobId));
+      setAvailableJobs((items) => items.map((job) => job.id === jobId ? { ...job, applicationStatus: "PENDING" } : job));
       setJobs((items) => [claimedJob, ...items]);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "รับงานไม่สำเร็จ");
@@ -229,7 +229,11 @@ export default function DashboardPage() {
       {isProfessional && services.length > 0 && <section className="mt-7"><h2 className="text-xl font-black">บริการของฉัน</h2><div className="mt-3 grid gap-4">{services.map((service) => <article key={service.id} className="rounded-2xl border bg-white p-5 shadow-sm"><div className="flex items-start justify-between gap-4"><div><span className="rounded-full bg-orange-50 px-3 py-1 text-xs font-bold text-orange-700">{service.category}</span><h2 className="mt-3 text-lg font-extrabold">{service.title}</h2><p className="mt-2 text-sm text-slate-600">{service.description}</p><p className="mt-2 font-bold text-[#ff6b2c]">เริ่มต้น ฿{(service.amount / 100).toLocaleString("th-TH")}</p></div><div className="flex gap-2"><Button variant="outline" size="icon" onClick={() => openServiceEditor(service)} aria-label="แก้ไขบริการ"><Pencil size={17}/></Button><Button variant="outline" size="icon" onClick={() => void deleteService(service.id)} aria-label="ลบบริการ"><Trash2 size={17}/></Button></div></div></article>)}</div></section>}
       {isProfessional && availableJobs.length > 0 && <section className="mt-7">
         <h2 className="text-xl font-black">{isContractor ? "งานที่เปิดรับผู้รับเหมา" : "งานที่เปิดรับช่าง"}</h2>
-        <div className="mt-3 grid gap-4">{availableJobs.map((job) => <JobCard key={job.id} job={job} action={<Button className="bg-[#ff6b2c]" onClick={() => void claimJob(job.id)}>รับงาน</Button>} />)}</div>
+        <div className="mt-3 grid gap-4">{availableJobs.map((job) => {
+          const applicationPending = job.applicationStatus === "PENDING";
+          const applicationRejected = job.applicationStatus === "REJECTED";
+          return <JobCard key={job.id} job={job} action={applicationPending ? <Button disabled variant="outline">รอลูกค้าพิจารณา</Button> : applicationRejected ? <Button disabled variant="outline">ไม่ได้รับเลือก</Button> : <Button className="bg-[#ff6b2c]" onClick={() => void claimJob(job.id)}>รับงาน</Button>} />;
+        })}</div>
       </section>}
       <div id="messages" className="mt-7 grid gap-4">{jobs.map((job) => <JobCard key={job.id} job={job} showApplications={isCustomer} onSelectProvider={isCustomer && job.status === "OPEN" ? (professionalId) => void selectProvider(job.id, professionalId) : undefined} action={<div className="flex flex-wrap gap-2">
         {job.room && <Button variant="outline" asChild><a href={`/chat/${job.room.id}`}><MessageCircle size={17}/> แชต{unreadChats[job.room.id] ? <span className="rounded-full bg-red-500 px-1.5 text-[10px] text-white">{unreadChats[job.room.id]}</span> : null}</a></Button>}
