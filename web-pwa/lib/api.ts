@@ -1,4 +1,4 @@
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
+export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 export type UserRole = "CUSTOMER" | "PROFESSIONAL" | "CONTRACTOR" | "ADMIN";
 export type AuthUser = { id: string; email: string; displayName: string; role: UserRole; phone?: string | null; professional?: { bio?: string | null; verified: boolean; kycStatus: string; bankLast4?: string | null } | null };
 export type AuthResult = { token: string; user: AuthUser };

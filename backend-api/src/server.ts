@@ -1013,11 +1013,50 @@ app.post(
       return;
     }
 
-    await prisma.jobApplication.create({
+    const application = await prisma.jobApplication.create({
       data: {
         jobId: job.id,
         professionalId: req.auth!.userId,
       },
+      include: {
+        professional: {
+          select: {
+            id: true,
+            displayName: true,
+            professional: { select: { bio: true, verified: true } },
+            _count: { select: { professionalReviews: true } },
+          },
+        },
+      },
+    });
+
+    const room = await prisma.chatRoom.findUnique({
+      where: { jobId: job.id },
+    });
+    const messageBody = `ช่าง ${application.professional.displayName} ได้กดรับงานนี้แล้ว ลูกค้าสามารถตรวจสอบโปรไฟล์และเลือกช่างได้`;
+    let automaticMessage = null;
+    if (room) {
+      automaticMessage = await prisma.message.create({
+        data: {
+          roomId: room.id,
+          senderId: req.auth!.userId,
+          body: messageBody,
+        },
+        include: {
+          sender: {
+            select: {
+              id: true,
+              displayName: true,
+            },
+          },
+        },
+      });
+      io.to(room.id).emit('message:new', automaticMessage);
+    }
+    io.to(job.customerId).emit('job:application:new', {
+      jobId: job.id,
+      application,
+      message: automaticMessage,
     });
 
     const appliedJob = await prisma.job.findUnique({
@@ -1695,6 +1734,8 @@ io.use((socket, next) => {
 });
 
 io.on('connection', (socket) => {
+  void socket.join(socket.data.userId);
+
   socket.on(
     'room:join',
     async (
