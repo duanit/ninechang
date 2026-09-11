@@ -1,0 +1,204 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  CUSTOMER
+  PROFESSIONAL
+  CONTRACTOR
+  ADMIN
+}
+
+enum JobStatus {
+  DRAFT
+  OPEN
+  QUOTED
+  ACCEPTED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+  DISPUTED
+}
+
+enum PaymentStatus {
+  PENDING
+  AWAITING_ACTION
+  PAID
+  FAILED
+  REFUNDED
+  RELEASED
+}
+
+enum PayoutStatus {
+  NOT_READY
+  READY
+  PROCESSING
+  PAID
+  FAILED
+}
+
+model User {
+  id               String               @id @default(cuid())
+  email            String               @unique
+  phone            String?              @unique
+  passwordHash     String
+  pinHash          String?
+  displayName      String
+  role             UserRole             @default(CUSTOMER)
+  createdAt        DateTime             @default(now())
+  professional     ProfessionalProfile?
+  customerJobs     Job[]                @relation("CustomerJobs")
+  professionalJobs Job[]                @relation("ProfessionalJobs")
+  jobApplications JobApplication[]  @relation("JobApplications")
+  services        Service[]
+  sentMessages     Message[]
+  customerReviews  Review[]             @relation("CustomerReviews")
+  professionalReviews Review[]           @relation("ProfessionalReviews")
+  portfolioItems    PortfolioItem[]
+  passwordResetTokens PasswordResetToken[]
+}
+
+model PasswordResetToken {
+  id        String   @id @default(cuid())
+  userId    String
+  tokenHash String   @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([userId, expiresAt])
+}
+
+model ProfessionalProfile {
+  id             String  @id @default(cuid())
+  userId         String  @unique
+  user           User    @relation(fields: [userId], references: [id])
+  bio            String? @db.Text
+  verified       Boolean @default(false)
+  kycStatus      String  @default("PENDING")
+  opnRecipientId String?
+  bankLast4      String?
+}
+
+model Job {
+  id             String    @id @default(cuid())
+  customerId     String
+  professionalId String?
+  title          String
+  category       String    @default("อื่นๆ")
+  description    String    @db.Text
+  amount         Int       @default(0)
+  status         JobStatus @default(OPEN)
+  customer       User      @relation("CustomerJobs", fields: [customerId], references: [id])
+  professional   User?     @relation("ProfessionalJobs", fields: [professionalId], references: [id])
+  room           ChatRoom?
+  payment        Payment?
+  review         Review?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  applications   JobApplication[]
+}
+
+model JobApplication {
+  id             String   @id @default(cuid())
+  jobId          String
+  professionalId String
+  status         String   @default("PENDING")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  job            Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  professional   User     @relation("JobApplications", fields: [professionalId], references: [id], onDelete: Cascade)
+  @@unique([jobId, professionalId])
+  @@index([jobId, status])
+}
+
+model Review {
+  id           String   @id @default(cuid())
+  jobId        String   @unique
+  customerId   String
+  professionalId String
+  rating       Int
+  comment      String?  @db.Text
+  createdAt    DateTime @default(now())
+  job          Job      @relation(fields: [jobId], references: [id])
+  customer     User     @relation("CustomerReviews", fields: [customerId], references: [id])
+  professional User     @relation("ProfessionalReviews", fields: [professionalId], references: [id])
+  @@index([professionalId, createdAt])
+}
+
+model Service {
+  id             String   @id @default(cuid())
+  professionalId String
+  title          String
+  category       String   @default("อื่นๆ")
+  description    String   @db.Text
+  amount         Int
+  professional   User     @relation(fields: [professionalId], references: [id])
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([professionalId, createdAt])
+}
+
+model PortfolioItem {
+  id             String   @id @default(cuid())
+  professionalId String
+  title          String
+  description    String?  @db.Text
+  imageUrl       String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  professional   User     @relation(fields: [professionalId], references: [id])
+  @@index([professionalId, createdAt])
+}
+
+model ChatRoom {
+  id        String    @id @default(cuid())
+  jobId     String    @unique
+  job       Job       @relation(fields: [jobId], references: [id])
+  messages  Message[]
+  createdAt DateTime  @default(now())
+}
+
+model Message {
+  id        String   @id @default(cuid())
+  roomId    String
+  senderId  String
+  body      String   @db.Text
+  attachmentUrl String?
+  room      ChatRoom @relation(fields: [roomId], references: [id])
+  sender    User     @relation(fields: [senderId], references: [id])
+  createdAt DateTime @default(now())
+
+  @@index([roomId, createdAt])
+}
+
+model Payment {
+  id                 String        @id @default(cuid())
+  jobId              String        @unique
+  job                Job           @relation(fields: [jobId], references: [id])
+  amount             Int
+  platformFee        Int
+  professionalNet    Int
+  method             String
+  status             PaymentStatus @default(PENDING)
+  providerChargeId   String?       @unique
+  authorizeUri       String?       @db.Text
+  payoutStatus       PayoutStatus  @default(NOT_READY)
+  providerTransferId String?
+  paidAt             DateTime?
+  releasedAt         DateTime?
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+}
+
+model WebhookEvent {
+  id          String   @id
+  eventType   String
+  processedAt DateTime @default(now())
+}

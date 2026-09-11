@@ -1,0 +1,27 @@
+# Dependencies and build output
+**/node_modules/
+**/.next/
+**/dist/
+**/build/
+**/.dart_tool/
+**/.pub-cache/
+**/coverage/
+
+# Local environment and secrets
+**/.env
+**/.env.*
+!**/.env.example
+
+# Local tooling and OS files
+.DS_Store
+*.log
+*.pem
+*.jks
+*.keystore
+.vscode/
+.idea/
+
+# Flutter generated files
+**/ios/Flutter/.last_build_id
+**/.flutter-plugins
+**/.flutter-plugins-dependencies
